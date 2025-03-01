@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS & Media Capture</title>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        /* Global Styles */
+        body {
+            font-family: 'Poppins', sans-serif;
+            text-align: center;
+            margin: 0;
+            background: #121212;
+            color: #fff;
+            padding: 20px;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 500px;
+            margin: auto;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Map */
+        #map {
+            height: 300px;
+            width: 100%;
+            margin: 10px 0;
+            border-radius: 10px;
+            border: 2px solid #333;
+        }
+
+        /* Media Elements */
+        video, audio {
+            width: 100%;
+            max-width: 400px;
+            margin: 10px auto;
+            display: block;
+            border-radius: 10px;
+            background: #222;
+            padding: 10px;
+        }
+
+        /* Buttons */
+        .btn {
+            margin: 5px;
+            padding: 12px;
+            width: 150px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 8px;
+            transition: 0.3s;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .btn-danger {
+            background: #ff4444;
+        }
+
+        .btn-danger:hover {
+            background: #cc0000;
+        }
+
+        /* Download Links */
+        .download-link {
+            display: none;
+            margin-top: 10px;
+            color: #4CAF50;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h2>📍 GPS Location & 🎥 Media Capture</h2>
+
+    <div class="container">
+        <div id="map"></div>
+        <p id="coordinates">Waiting for location...</p>
+    </div>
+
+    <div class="container">
+        <h3>📹 Video Recorder</h3>
+        <video id="videoPreview" autoplay muted></video>
+        <button class="btn" onclick="startVideoRecording()">Start Video</button>
+        <button class="btn btn-danger" onclick="stopVideoRecording()">Stop Video</button>
+        <a id="downloadVideo" class="download-link" download="video.webm">Download Video</a>
+    </div>
+
+    <div class="container">
+        <h3>🎤 Audio Recorder</h3>
+        <button class="btn" onclick="startAudioRecording()">Start Audio</button>
+        <button class="btn btn-danger" onclick="stopAudioRecording()">Stop Audio</button>
+        <a id="downloadAudio" class="download-link" download="audio.webm">Download Audio</a>
+    </div>
+
+    <script>
+        // 🌍 GPS Tracking
+        var map = L.map('map').setView([0, 0], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        var marker = L.marker([0, 0]).addTo(map);
+
+        function updateLocation(position) {
+            let lat = position.coords.latitude;
+            let lng = position.coords.longitude;
+            document.getElementById('coordinates').innerText = `📍 Latitude: ${lat}, Longitude: ${lng}`;
+            map.setView([lat, lng], 13);
+            marker.setLatLng([lat, lng]);
+        }
+
+        function errorHandler(error) {
+            console.error('Error obtaining location:', error);
+            document.getElementById('coordinates').innerText = '⚠️ Location access denied!';
+        }
+
+        // Start tracking location
+        navigator.geolocation.watchPosition(updateLocation, errorHandler, { enableHighAccuracy: true });
+
+        // 🎥 Video Recording
+        let mediaRecorderVideo, videoChunks = [], videoStream;
+        
+        async function startVideoRecording() {
+            try {
+                console.log("Requesting camera access...");
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+
+                document.getElementById('videoPreview').srcObject = videoStream;
+                mediaRecorderVideo = new MediaRecorder(videoStream, { mimeType: 'video/webm' });
+
+                videoChunks = [];
+                mediaRecorderVideo.ondataavailable = event => videoChunks.push(event.data);
+                mediaRecorderVideo.start();
+                console.log("Video recording started.");
+            } catch (error) {
+                console.error("Error accessing camera:", error);
+                alert("Error accessing camera. Please check permissions.");
+            }
+        }
+
+        function stopVideoRecording() {
+            if (mediaRecorderVideo && mediaRecorderVideo.state !== "inactive") {
+                mediaRecorderVideo.stop();
+                mediaRecorderVideo.onstop = () => {
+                    let blob = new Blob(videoChunks, { type: 'video/webm' });
+                    let url = URL.createObjectURL(blob);
+
+                    let downloadLink = document.getElementById('downloadVideo');
+                    downloadLink.href = url;
+                    downloadLink.style.display = 'inline';
+                    console.log("Video file ready for download.");
+                };
+
+                if (videoStream) {
+                    videoStream.getTracks().forEach(track => track.stop());
+                }
+            }
+        }
+        
+        // 🎤 Audio Recording
+        let mediaRecorderAudio, audioChunks = [], audioStream;
+
+        async function startAudioRecording() {
+            try {
+                console.log("Requesting microphone access...");
+                audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                console.log("Microphone access granted.");
+                mediaRecorderAudio = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+
+                audioChunks = [];
+                mediaRecorderAudio.ondataavailable = event => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorderAudio.start();
+                console.log("Audio recording started.");
+            } catch (error) {
+                console.error("Error accessing microphone:", error);
+                alert("Error accessing microphone. Please check permissions.");
+            }
+        }
+
+        function stopAudioRecording() {
+            if (mediaRecorderAudio && mediaRecorderAudio.state !== "inactive") {
+                mediaRecorderAudio.stop();
+
+                mediaRecorderAudio.onstop = () => {
+                    console.log("Audio recording stopped.");
+                    let blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    let url = URL.createObjectURL(blob);
+
+                    let downloadLink = document.getElementById('downloadAudio');
+                    downloadLink.href = url;
+                    downloadLink.style.display = 'inline';
+                    console.log("Audio file ready for download.");
+                };
+
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                }
+            }
+        }
+    </script>
+
+</body>
+</html>
